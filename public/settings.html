@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Edit/Settings</title>
+  <!-- Firebase SDKs (v8 style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <!-- Shared initializer -->
+  <script src="./js/firebase-init.js"></script>
+  <style>
+    :root{
+      --bg1:#fef3dc;
+      --bg2:#f9efe2;
+      --card:#ffffff;
+      --ink:#27323a;
+      --muted:#eaf4f8;
+      --muted-ink:#5a6b73;
+      --accent:#7aafbb;
+      --accent-700:#6699a8;
+      --accent-soft:#a9d8e5;
+      --border:#e7edf0;
+      --danger:#eea5a5;
+      --danger-700:#dc6b6b;
+      --success:#88c4a0;
+      --shadow:0 10px 30px rgba(0,0,0,.07);
+      --radius:16px;
+      --radius-sm:10px;
+    }
+    /* Page */
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--ink);
+      background: radial-gradient(1200px 600px at 20% -10%, var(--bg2), transparent 60%),
+                  radial-gradient(1200px 600px at 120% 0%, var(--bg1), transparent 60%),
+                  var(--bg1);
+      padding: 36px 18px 64px;
+      display:flex; align-items:flex-start; justify-content:center;
+    }
+    .shell{width: min(1020px, 100%);}
+    /* Top nav */
+    .nav{
+      display:flex; gap:10px; justify-content:center; margin-bottom:18px;
+    }
+    .btn{
+      appearance:none; border:none; border-radius:12px; padding:10px 18px; font-weight:700; cursor:pointer;
+      background:var(--accent-soft); color:#233740; transition: all .18s ease;
+    }
+    .btn:hover{ background:var(--accent); color:#fff; }
+    .btn--primary{ background:var(--accent); color:#fff; }
+    .btn--primary:hover{ background:var(--accent-700); }
+    .btn--danger{ background:var(--danger); color:#fff; }
+    .btn--danger:hover{ background:var(--danger-700); }
+    .btn--ghost{ background:#f3f7f9; color:#2b4350; border:1px solid var(--border); }
+    .btn--ghost:hover{ background:#eaf2f6; }
+    .card{
+      background:var(--card);
+      box-shadow:var(--shadow);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      overflow:hidden;
+    }
+    .card__header{
+      padding:22px 26px;
+      background:linear-gradient(180deg, #f9fdff, #f5fbfe);
+      border-bottom:1px solid var(--border);
+    }
+    .card__title{
+      margin:0; font-size:22px; letter-spacing:.2px;
+      text-align:center;
+    }
+    .card__body{ padding: 18px 22px 24px; }
+    /* Table */
+    .table-wrap{ overflow:auto; border-radius:var(--radius); }
+    table{ width:100%; border-collapse:separate; border-spacing:0; }
+    thead th{
+      position:sticky; top:0; z-index:1;
+      background:var(--muted);
+      color:#28424d;
+      font-weight:800; letter-spacing:.2px;
+      padding:12px 14px; text-align:left; border-bottom:1px solid var(--border);
+    }
+    tbody td{
+      padding:12px 14px; border-bottom:1px solid var(--border);
+      vertical-align:middle;
+    }
+    tbody tr:nth-child(even){ background:#fcfdfe; }
+    tbody tr:hover{ background:#f6fbfe; }
+    input[type="text"], select{
+      width:100%;
+      border:1px solid #d7e2e6;
+      background:#fafcfd;
+      border-radius:10px; padding:10px 12px;
+      font-size:14px; color:#2a3b44;
+      outline:none; transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    input[type="text"]:focus, select:focus, textarea:focus{
+      border-color:#b7d1da; box-shadow:0 0 0 3px rgba(122,175,187,.18);
+    }
+    /* Notes, compact + editor */
+    .notes-compact{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .note-pill{
+      max-width:360px;
+      background:#f7fbfd; border:1px dashed #c7d7dd; color:#4a5c63;
+      padding:6px 10px; border-radius:999px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .note-empty{ color:#8b9aa0; font-style:italic; }
+    .link-btn{
+      background:transparent; border:none; color:#2b5a73; cursor:pointer; font-weight:700; padding:0;
+      border-bottom:1px dashed rgba(43,90,115,.35);
+    }
+    .link-btn:hover{ color:#1e4457; }
+    .notes-editor{ display:none; margin-top:10px; }
+    .notes-editor textarea{
+      width:100%; min-height:66px; resize:vertical; border-radius:10px; border:1px solid #ccd8dc; background:#fbfefe;
+      padding:9px 11px; font-size:14px; color:#2a3b44;
+    }
+    .row-actions{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+    /* Add form as a small card */
+    .add-card{ margin-top:18px; padding:18px; background:#fcfeff; border:1px solid var(--border); border-radius:var(--radius-sm); }
+    .add-grid{
+      display:grid; gap:10px; grid-template-columns: 1fr 180px 180px; align-items:center;
+    }
+    @media (max-width: 820px){
+      .add-grid{ grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px){
+      .add-grid{ grid-template-columns: 1fr; }
+    }
+    .add-notes-toggle{ margin-top:8px; }
+    .add-notes-area{ display:none; margin-top:8px; }
+    .add-notes-area textarea{
+      width:100%; min-height:66px; resize:vertical; border-radius:10px; border:1px solid #ccd8dc; background:#fbfefe;
+      padding:9px 11px; font-size:14px;
+    }
+    .add-actions{ display:flex; justify-content:center; margin-top:10px; }
+    .divider{ height:1px; background:var(--border); margin:24px 0; }
+    /* Spinner on buttons */
+    .btn--loading{ pointer-events:none; opacity:.85; position:relative; }
+    .btn--loading::after{
+      content:""; position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.6); border-top-color:#fff; animation:spin .8s linear infinite;
+    }
+    @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg); } }
+    /* Toasts */
+    .toast{
+      position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+      background:#fff; color:#222; border:1px solid rgba(0,0,0,.06); box-shadow:0 14px 28px rgba(0,0,0,.12);
+      padding:12px 16px; border-radius:14px; min-width:220px; text-align:center; font-size:.95em;
+      opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+    }
+    .toast--show{ opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+    .toast--success{ border-left:6px solid var(--success); }
+    .toast--error{ border-left:6px solid var(--danger-700); }
+    .toast--info{ border-left:6px solid var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav">
+      <button class="btn" onclick="location.href='dashboard.html'">Dashboard</button>
+      <button class="btn" onclick="location.href='settings.html'">Edit/Settings</button>
+      <button class="btn" onclick="location.href='logs.html'">Logs</button>
+    </nav>
+    <section class="card">
+      <header class="card__header">
+        <h1 class="card__title">Edit Students</h1>
+      </header>
+      <div class="card__body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:24%">Name</th>
+                <th style="width:16%">Program</th>
+                <th style="width:14%">Grade</th>
+                <th style="width:36%">Notes</th>
+                <th style="width:10%">Delete</th>
+              </tr>
+            </thead>
+            <tbody id="studentTableBody">
+              <tr><td colspan="5" style="text-align:center; color: var(--muted-ink); padding:18px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="add-card">
+          <h3 style="margin:4px 0 10px; text-align:center;">Add Student</h3>
+          <div class="add-grid">
+            <input type="text" id="newStudentName" placeholder="Student Name" />
+            <select id="newStudentProgram" title="Program">
+              <option value="math">Math</option>
+              <option value="reading">Reading</option>
+              <option value="both">Both</option>
+            </select>
+            <select id="newStudentGrade" title="Grade (optional)">
+              <option value="">Grade (optional)</option>
+              <option>K</option><option>1</option><option>2</option><option>3</option>
+              <option>4</option><option>5</option><option>6</option><option>7</option>
+              <option>8</option><option>9</option><option>10</option><option>11</option><option>12</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="add-notes-toggle" style="text-align:center;">
+            <button class="link-btn" id="toggleAddNotesBtn" type="button">Add notes</button>
+          </div>
+          <div class="add-notes-area" id="addNotesArea">
+            <textarea id="newStudentNotes" placeholder="Notes (optional)"></textarea>
+          </div>
+          <div class="add-actions">
+            <button id="addBtn" class="btn btn--primary">Add Student</button>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div style="text-align:center;">
+          <h3 style="margin:10px 0 12px;">Staff PIN Management</h3>
+          <button id="regenPinBtn" class="btn btn--ghost">Generate New 4-Digit PIN</button>
+          <p id="newPinDisplay" style="margin:12px 0 4px; font-weight:700;">Current PIN: —</p>
+        </div>
+      </div>
+    </section>
+  </div>
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script>
+    // --- identical logic to your working version (polish only) ---
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+    const tbody = document.getElementById('studentTableBody');
+    const nameEl = document.getElementById('newStudentName');
+    const progEl = document.getElementById('newStudentProgram');
+    const gradeEl = document.getElementById('newStudentGrade');
+    const addBtn = document.getElementById('addBtn');
+    const toggleAddNotesBtn = document.getElementById('toggleAddNotesBtn');
+    const addNotesArea = document.getElementById('addNotesArea');
+    const regenPinBtn = document.getElementById('regenPinBtn');
+    const pinDisplay = document.getElementById('newPinDisplay');
+    const toastEl = document.getElementById('toast');
+    let studentsRef = null;
+    let pinDocRef   = null;
+    let staffPinsCol = null;
+    let unsubStudents = null;
+    function showToast(text, type='info', ms=2500){
+      toastEl.textContent = text;
+      toastEl.className = 'toast';
+      toastEl.classList.add('toast--show', `toast--${type}`);
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=> toastEl.classList.remove('toast--show'), ms);
+    }
+    function setBtnLoading(btn, loading){
+      if(loading){ btn.classList.add('btn--loading'); btn.disabled = true; }
+      else{ btn.classList.remove('btn--loading'); btn.disabled = false; }
+    }
+    function escapeHtml(s=''){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function previewNote(text=''){
+      const t = text.trim();
+      if(!t) return '<span class="note-pill note-empty">No notes</span>';
+      const short = t.length > 40 ? t.slice(0,40)+'…' : t;
+      return `<span class="note-pill" title="${escapeHtml(t)}">${escapeHtml(short)}</span>`;
+    }
+    // Toggle add-form notes area
+    toggleAddNotesBtn.addEventListener('click', ()=>{
+      const open = addNotesArea.style.display === 'block';
+      addNotesArea.style.display = open ? 'none' : 'block';
+      toggleAddNotesBtn.textContent = open ? 'Add notes' : 'Hide notes';
+    });
+    // Auth guard
+    auth.onAuthStateChanged(user=>{
+      if (unsubStudents){ unsubStudents(); unsubStudents = null; }
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7d84; padding:18px;">Loading…</td></tr>`;
+      if(!user){ location.href = "index.html"; return; }
+      const udoc = db.collection('users').doc(user.uid);
+      studentsRef  = udoc.collection('students');
+      pinDocRef    = udoc.collection('config').doc('staffPin');
+      staffPinsCol = udoc.collection('staffPins');
+      unsubStudents = studentsRef.orderBy('name').onSnapshot(snap=>{
+        tbody.innerHTML = '';
+        if(snap.empty){
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7d84; padding:18px;">No students yet.</td></tr>`;
+        }else{
+          snap.forEach(doc=> renderRow(doc.id, doc.data()));
+        }
+      }, err=>{
+        console.error(err); showToast(err.message || 'Could not load students.','error',3200);
+      });
+      pinDocRef.get().then(doc=>{
+        pinDisplay.textContent = (doc.exists && doc.data().pin)
+          ? `Current PIN: ${doc.data().pin}` : 'Current PIN: —';
+      }).catch(()=>{});
+    });
+    function renderRow(id, s){
+      const tr = document.createElement('tr');
+      const name = s.name || '(unnamed)';
+      const program = s.program || 'math';
+      const grade = s.grade || '';
+      const notes = s.notes || '';
+      tr.innerHTML = `
+        <td><input type="text" value="${escapeHtml(name)}" data-field="name" data-id="${id}"/></td>
+        <td>
+          <select data-field="program" data-id="${id}">
+            <option value="math" ${program==='math'?'selected':''}>Math</option>
+            <option value="reading" ${program==='reading'?'selected':''}>Reading</option>
+            <option value="both" ${program==='both'?'selected':''}>Both</option>
+          </select>
+        </td>
+        <td>
+          <select data-field="grade" data-id="${id}">
+            <option value="" ${grade===''?'selected':''}>—</option>
+            ${['K','1','2','3','4','5','6','7','8','9','10','11','12','Other'].map(g=>`<option value="${g}" ${grade===g?'selected':''}>${g}</option>`).join('')}
+          </select>
+        </td>
+        <td>
+          <div class="notes-compact" data-notes-wrap="${id}">
+            <span class="note-preview" data-notes-preview="${id}">${previewNote(notes)}</span>
+            <button class="link-btn" data-notes-edit="${id}" type="button">${notes && notes.trim() ? 'Edit note' : 'Add note'}</button>
+          </div>
+          <div class="notes-editor" data-notes-editor="${id}">
+            <textarea class="notes-ta" data-notes-ta="${id}" placeholder="Notes (optional)">${escapeHtml(notes)}</textarea>
+            <div class="row-actions">
+              <button class="btn btn--primary" data-notes-save="${id}">Save</button>
+              <button class="btn btn--ghost" data-notes-cancel="${id}">Cancel</button>
+              <button class="btn btn--danger" data-del="${id}" style="margin-left:auto;">Delete</button>
+            </div>
+          </div>
+        </td>
+        <td>
+          <button class="btn btn--danger" data-del="${id}">Delete</button>
+        </td>
+      `;
+      tr.dataset.orig = JSON.stringify({ name, program, grade, notes });
+      tbody.appendChild(tr);
+    }
+    function getRowValues(id){
+      const name = tbody.querySelector(`input[data-id="${id}"][data-field="name"]`).value.trim();
+      const program = tbody.querySelector(`select[data-id="${id}"][data-field="program"]`).value;
+      const grade = tbody.querySelector(`select[data-id="${id}"][data-field="grade"]`).value;
+      return { name, program, grade };
+    }
+    function resetRowToOriginal(id){
+      const tr = [...tbody.children].find(r=>r.querySelector(`[data-id="${id}"]`));
+      if(!tr) return;
+      const orig = JSON.parse(tr.dataset.orig||'{}');
+      tbody.querySelector(`input[data-id="${id}"][data-field="name"]`).value = orig.name || '';
+      tbody.querySelector(`select[data-id="${id}"][data-field="program"]`).value = orig.program || 'math';
+      tbody.querySelector(`select[data-id="${id}"][data-field="grade"]`).value = orig.grade || '';
+      const ta = tbody.querySelector(`[data-notes-ta="${id}"]`);
+      if(ta) ta.value = orig.notes || '';
+      const prev = tbody.querySelector(`[data-notes-preview="${id}"]`);
+      if(prev) prev.innerHTML = previewNote(orig.notes || '');
+      const editBtn = tbody.querySelector(`[data-notes-edit="${id}"]`);
+      if(editBtn) editBtn.textContent = (orig.notes && orig.notes.trim()) ? 'Edit note' : 'Add note';
+      hideNotesEditor(id);
+    }
+    function showNotesEditor(id){
+      const ed = tbody.querySelector(`[data-notes-editor="${id}"]`);
+      const wrap = tbody.querySelector(`[data-notes-wrap="${id}"]`);
+      if(ed) ed.style.display='block';
+      if(wrap) wrap.style.display='none';
+    }
+    function hideNotesEditor(id){
+      const ed = tbody.querySelector(`[data-notes-editor="${id}"]`);
+      const wrap = tbody.querySelector(`[data-notes-wrap="${id}"]`);
+      if(ed) ed.style.display='none';
+      if(wrap) wrap.style.display='flex';
+    }
+    // Add student
+    addBtn.addEventListener('click', async ()=>{
+      try{
+        if(!studentsRef) return showToast('Please sign in to add students.','error');
+        const name = (nameEl.value||'').trim();
+        const program = progEl.value;
+        const grade = gradeEl.value || '';
+        const notes = (document.getElementById('newStudentNotes')?.value||'').trim();
+        if(!name) return showToast('Name is required.','error');
+        setBtnLoading(addBtn,true);
+        await studentsRef.add({ name, program, grade, notes, checkInTime: null });
+        nameEl.value=''; gradeEl.value=''; const n=document.getElementById('newStudentNotes'); if(n) n.value='';
+        addNotesArea.style.display='none'; document.getElementById('toggleAddNotesBtn').textContent='Add notes';
+        showToast('Student added.','success');
+      }catch(err){ console.error(err); showToast(err.message||'Error adding student.','error',3200); }
+      finally{ setBtnLoading(addBtn,false); }
+    });
+    // Delegated actions
+    tbody.addEventListener('click', (e)=>{
+      const t = e.target;
+      // Delete
+      if(t.matches('[data-del]')){
+        const id = t.getAttribute('data-del');
+        if(!studentsRef || !id) return;
+        if(confirm('Delete this student?')){
+          studentsRef.doc(id).delete().then(()=> showToast('Student deleted.','success'))
+          .catch(err=>{ console.error(err); showToast(err.message||'Error deleting student.','error',3200); });
+        }
+        return;
+      }
+      // Open notes editor
+      if(t.hasAttribute('data-notes-edit')){ showNotesEditor(t.getAttribute('data-notes-edit')); return; }
+      // Save notes
+      if(t.hasAttribute('data-notes-save')){
+        const id = t.getAttribute('data-notes-save');
+        const ta = tbody.querySelector(`[data-notes-ta="${id}"]`);
+        if(!studentsRef || !ta) return;
+        const notes = (ta.value||'').trim();
+        studentsRef.doc(id).update({ notes }).then(()=>{
+          const prev = tbody.querySelector(`[data-notes-preview="${id}"]`);
+          const editBtn = tbody.querySelector(`[data-notes-edit="${id}"]`);
+          if(prev) prev.innerHTML = previewNote(notes);
+          if(editBtn) editBtn.textContent = notes ? 'Edit note' : 'Add note';
+          const tr = [...tbody.children].find(r=>r.querySelector(`[data-id="${id}"]`));
+          if(tr){ const orig = JSON.parse(tr.dataset.orig||'{}'); orig.notes = notes; tr.dataset.orig = JSON.stringify(orig); }
+          hideNotesEditor(id); showToast('Notes saved.','success');
+        }).catch(err=>{ console.error(err); showToast(err.message||'Error saving notes.','error',3200); });
+        return;
+      }
+      // Cancel notes
+      if(t.hasAttribute('data-notes-cancel')){
+        const id = t.getAttribute('data-notes-cancel');
+        const tr = [...tbody.children].find(r=>r.querySelector(`[data-id="${id}"]`));
+        if(tr){ const orig = JSON.parse(tr.dataset.orig||'{}'); const ta = tbody.querySelector(`[data-notes-ta="${id}"]`); if(ta) ta.value = orig.notes || ''; }
+        hideNotesEditor(id); showToast('Notes closed.','info'); return;
+      }
+      // Save name/program/grade (when clicking Save in editor row-actions top-right)
+      if(t.classList.contains('btn') && t.textContent.trim()==='Save' && !t.hasAttribute('data-notes-save')){
+        const id = t.closest('tr').querySelector('[data-id]').getAttribute('data-id');
+        const { name, program, grade } = getRowValues(id);
+        if(!name) return showToast('Name is required.','error');
+        studentsRef.doc(id).update({ name, program, grade }).then(()=>{
+          const tr = [...tbody.children].find(r=>r.querySelector(`[data-id="${id}"]`));
+          if(tr){ const orig = JSON.parse(tr.dataset.orig||'{}'); tr.dataset.orig = JSON.stringify({ ...orig, name, program, grade }); }
+          showToast('Student updated.','success');
+        }).catch(err=>{ console.error(err); showToast(err.message||'Error updating student.','error',3200); });
+        return;
+      }
+    });
+    // PIN
+    regenPinBtn.addEventListener('click', async ()=>{
+      try{
+        const user = auth.currentUser; if(!user) return showToast('Please sign in to generate a PIN.','error');
+        const newPin = String(Math.floor(1000 + Math.random()*9000));
+        await pinDocRef.set({ pin:newPin, uid:user.uid, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
+        await staffPinsCol.doc(newPin).set({ uid:user.uid, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
+        pinDisplay.textContent = `Current PIN: ${newPin}`;
+        try{ await navigator.clipboard.writeText(newPin); showToast('New PIN copied.','success'); }
+        catch{ showToast(`New PIN: ${newPin}`,'info',4000); }
+      }catch(err){ console.error(err); showToast(err.message||'Error generating PIN.','error',3200); }
+    });
+  </script>
+</body>
+</html>
+

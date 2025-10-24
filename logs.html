@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Session Logs</title>
+
+  <!-- Firebase (v8 style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <!-- Use your shared initializer so it points at studenttimetracker-bc2e1 -->
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    :root{
+      --bg1:#fef3dc; --bg2:#f9efe2;
+      --card:#fff; --ink:#27323a; --muted:#eaf4f8; --muted-ink:#5a6b73;
+      --accent:#7aafbb; --accent-700:#6699a8; --accent-soft:#a9d8e5;
+      --border:#e7edf0; --danger:#eea5a5; --danger-700:#dc6b6b; --success:#88c4a0;
+      --shadow:0 10px 30px rgba(0,0,0,.07); --radius:16px; --radius-sm:12px;
+    }
+
+    html,body{height:100%}
+    body{
+      margin:0; color:var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+      background: radial-gradient(1200px 600px at 20% -10%, var(--bg2), transparent 60%),
+                  radial-gradient(1200px 600px at 120% 0%, var(--bg1), transparent 60%),
+                  var(--bg1);
+      padding: 36px 18px 64px;
+      display:flex; justify-content:center;
+    }
+
+    .shell{ width: min(1100px, 100%); }
+
+    /* Top nav */
+    .nav{ display:flex; gap:10px; justify-content:center; margin-bottom:18px; }
+    .btn{ appearance:none; border:none; border-radius:12px; padding:10px 18px; font-weight:700; cursor:pointer;
+          background:var(--accent-soft); color:#233740; transition: all .18s ease; }
+    .btn:hover{ background:var(--accent); color:#fff; }
+    .btn--primary{ background:var(--accent); color:#fff; }
+    .btn--primary:hover{ background:var(--accent-700); }
+    .btn--danger{ background:var(--danger); color:#fff; }
+    .btn--danger:hover{ background:var(--danger-700); }
+    .btn--ghost{ background:#f3f7f9; color:#2b4350; border:1px solid var(--border); }
+    .btn--ghost:hover{ background:#eaf2f6; }
+    .btn--small{ padding:8px 12px; border-radius:10px; font-weight:700; }
+
+    .card{ background:var(--card); box-shadow:var(--shadow); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .card__header{ padding:22px 26px; background:linear-gradient(180deg, #f9fdff, #f5fbfe); border-bottom:1px solid var(--border); }
+    .card__title{ margin:0; font-size:22px; text-align:center; letter-spacing:.2px; }
+    .card__body{ padding: 20px 22px 26px; }
+
+    /* Filters */
+    .filters{ background:#fcfeff; border:1px solid var(--border); border-radius: var(--radius-sm);
+              padding:16px; display:grid; gap:10px; grid-template-columns: 1fr 170px 170px 170px 170px auto; align-items:center; }
+    @media (max-width:980px){ .filters{ grid-template-columns:1fr 1fr; } }
+    @media (max-width:560px){ .filters{ grid-template-columns:1fr; } }
+
+    input[type="text"], input[type="date"], select{
+      width:100%; border:1px solid #d7e2e6; background:#fafcfd; border-radius:10px;
+      padding:10px 12px; font-size:14px; color:#2a3b44; outline:none;
+      transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    input:focus, select:focus{ border-color:#b7d1da; box-shadow:0 0 0 3px rgba(122,175,187,.18); }
+
+    /* Table */
+    .table-wrap{ overflow:auto; border-radius:var(--radius); }
+    table{ width:100%; border-collapse:separate; border-spacing:0; }
+    thead th{
+      position:sticky; top:0; z-index:1; background:var(--muted); color:#28424d;
+      font-weight:800; letter-spacing:.2px; padding:12px 14px; text-align:left; border-bottom:1px solid var(--border);
+    }
+    tbody td{ padding:12px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+    tbody tr:nth-child(even){ background:#fcfdfe; }
+    tbody tr:hover{ background:#f6fbfe; }
+    .group-row td{ background:#f9fafb; font-weight:800; color:#39515c; }
+
+    .totals{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; color:#2a3b44; }
+    .pill{ background:#f3f8fa; border:1px solid var(--border); padding:8px 12px; border-radius:999px; }
+
+    /* Toasts */
+    .toast{
+      position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+      background:#fff; color:#222; border:1px solid rgba(0,0,0,.06); box-shadow:0 14px 28px rgba(0,0,0,.12);
+      padding:12px 16px; border-radius:14px; min-width:220px; text-align:center; font-size:.95em;
+      opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+    }
+    .toast--show{ opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+    .toast--success{ border-left:6px solid var(--success); }
+    .toast--error{ border-left:6px solid var(--danger-700); }
+    .toast--info{ border-left:6px solid var(--accent); }
+
+    .btn--loading{ pointer-events:none; opacity:.85; position:relative; }
+    .btn--loading::after{
+      content:""; position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.6); border-top-color:#fff; animation:spin .8s linear infinite;
+    }
+    @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav">
+      <button class="btn" onclick="location.href='dashboard.html'">Dashboard</button>
+      <button class="btn" onclick="location.href='settings.html'">Edit/Settings</button>
+      <button class="btn" id="logoutBtn">Logout</button>
+    </nav>
+
+    <section class="card">
+      <header class="card__header">
+        <h1 class="card__title">Student Session Logs</h1>
+      </header>
+
+      <div class="card__body">
+        <div class="actions" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; justify-content:flex-end;">
+          <button class="btn btn--ghost btn--small" id="downloadBtn">Download CSV</button>
+          <button class="btn btn--danger btn--small" id="archiveBtn" title="Archive this month to CSV, then delete those sessions">
+            Archive & Delete This Month
+          </button>
+        </div>
+
+        <div class="filters" style="margin-bottom:16px;">
+          <input type="text" id="studentSearch" placeholder="Search student name…"/>
+          <select id="programFilter">
+            <option value="all">All programs</option>
+            <option value="math">Math</option>
+            <option value="reading">Reading</option>
+            <option value="both">Both</option>
+          </select>
+          <input type="date" id="startDate"/>
+          <input type="date" id="endDate"/>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:700; color:#2a3b44;">
+            <input type="checkbox" id="completedOnly"/> Completed only
+          </label>
+          <button class="btn btn--ghost btn--small" id="resetBtn">Reset</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:26%">Name</th>
+                <th style="width:14%">Program</th>
+                <th style="width:30%">Check-In</th>
+                <th style="width:30%">Check-Out</th>
+                <th style="width:10%">Minutes</th>
+              </tr>
+            </thead>
+            <tbody id="logTableBody">
+              <tr><td colspan="5" style="text-align:center; color: var(--muted-ink); padding:18px;">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="totals" id="totalsBar" style="display:none;">
+          <span class="pill" id="totalSessions">0 sessions</span>
+          <span class="pill" id="totalMinutes">0 total minutes</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script>
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    const tbody = document.getElementById('logTableBody');
+    const toastEl = document.getElementById('toast');
+    const searchEl = document.getElementById('studentSearch');
+    const programEl = document.getElementById('programFilter');
+    const startEl = document.getElementById('startDate');
+    const endEl = document.getElementById('endDate');
+    const completedEl = document.getElementById('completedOnly');
+    const resetBtn = document.getElementById('resetBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const archiveBtn = document.getElementById('archiveBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    const totalsBar = document.getElementById('totalsBar');
+    const totalSessions = document.getElementById('totalSessions');
+    const totalMinutes  = document.getElementById('totalMinutes');
+
+    let managerUid = null;
+    let liveUnsub = null; // auto-refresh when students change
+    window.__logData = []; // for CSV + archive
+
+    function showToast(text, type='info', ms=2400){
+      toastEl.textContent = text;
+      toastEl.className = 'toast';
+      toastEl.classList.add('toast--show', `toast--${type}`);
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=> toastEl.classList.remove('toast--show'), ms);
+    }
+
+    logoutBtn.addEventListener('click', ()=> auth.signOut().then(()=>location.href='index.html'));
+
+    // auth guard
+    auth.onAuthStateChanged(user=>{
+      if(liveUnsub){ liveUnsub(); liveUnsub = null; }
+      if(!user){ location.href='index.html'; return; }
+      managerUid = user.uid;
+
+      // auto refresh when students collection changes
+      liveUnsub = db.collection('users').doc(managerUid).collection('students').onSnapshot(()=> {
+        loadLogs(); // reload on any student change
+      });
+
+      loadLogs();
+    });
+
+    // filters
+    function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+    const triggerLoad = debounce(loadLogs, 250);
+
+    searchEl.addEventListener('input', triggerLoad);
+    [programEl, startEl, endEl, completedEl].forEach(el=> el.addEventListener('change', loadLogs));
+    resetBtn.addEventListener('click', ()=>{
+      searchEl.value = ""; programEl.value = "all"; startEl.value=""; endEl.value=""; completedEl.checked=false; loadLogs();
+    });
+
+    downloadBtn.addEventListener('click', downloadCSV);
+    archiveBtn.addEventListener('click', archiveAndDeleteCurrentMonth);
+
+    function fmtDate(d){ return d ? d.toLocaleString() : "-"; }
+
+    async function loadLogs(){
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7d84; padding:18px;">Loading…</td></tr>`;
+      const rows = [];
+      const seenGroup = new Set();
+
+      const search = (searchEl.value||"").toLowerCase();
+      const programFilter = programEl.value;
+      const completedOnly = completedEl.checked;
+
+      const startDate = startEl.valueAsDate || null;
+      const endDate = endEl.valueAsDate || null;
+      if(endDate) endDate.setHours(23,59,59,999);
+
+      const studentsSnap = await db.collection('users').doc(managerUid).collection('students').orderBy('name').get({ source:'server' });
+
+      tbody.innerHTML = '';
+      for(const studentDoc of studentsSnap.docs){
+        const sData = studentDoc.data();
+        const name = sData.name || '-';
+        const program = sData.program || '-';
+
+        if(search && !name.toLowerCase().includes(search)) continue;
+        if(programFilter !== 'all' && program !== programFilter) continue;
+
+        const sessSnap = await db.collection('users').doc(managerUid)
+          .collection('students').doc(studentDoc.id)
+          .collection('sessions').orderBy('checkInTime','desc').get({ source:'server' });
+
+        const filtered = sessSnap.docs.filter(d=>{
+          const v = d.data();
+          const ci = v.checkInTime?.toDate(); const co = v.checkOutTime?.toDate();
+          return (!completedOnly || co) &&
+                 (!startDate || (ci && ci >= startDate)) &&
+                 (!endDate   || (ci && ci <= endDate));
+        });
+
+        if(filtered.length && !seenGroup.has(name)){
+          const gr = document.createElement('tr');
+          gr.className = 'group-row';
+          gr.innerHTML = `<td colspan="5">${name} (${program})</td>`;
+          tbody.appendChild(gr);
+          seenGroup.add(name);
+        }
+
+        for(const doc of filtered){
+          const v = doc.data();
+          const ci = v.checkInTime?.toDate();
+          const co = v.checkOutTime?.toDate();
+          const dur = (ci && co) ? Math.floor((co-ci)/60000) : "-";
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td></td><td></td><td>${fmtDate(ci)}</td><td>${fmtDate(co)}</td><td>${dur}</td>`;
+          tbody.appendChild(tr);
+
+          rows.push([name, program, ci, co, dur]);
+        }
+      }
+
+      if(!rows.length){
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#6b7d84; padding:18px;">No matching sessions found.</td></tr>`;
+        totalsBar.style.display = 'none';
+      }else{
+        totalsBar.style.display = '';
+        totalSessions.textContent = `${rows.length} session${rows.length===1?'':'s'}`;
+        const mins = rows.reduce((m, r)=> m + (typeof r[4]==='number' ? r[4] : 0), 0);
+        totalMinutes.textContent  = `${mins} total minutes`;
+      }
+
+      window.__logData = rows;
+    }
+
+    function downloadCSV(){
+      const rows = window.__logData || [];
+      let csv = "Name,Program,Check-In Time,Check-Out Time,Duration (min)\n";
+      for(const r of rows){
+        csv += r.map(v => `"${v instanceof Date ? v.toLocaleString() : (v ?? '')}"`).join(",") + "\n";
+      }
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "student_logs.csv";
+      a.click();
+    }
+
+    async function archiveAndDeleteCurrentMonth(){
+      try{
+        const rows = window.__logData || [];
+        if(!rows.length) return showToast('No logs to archive.','info');
+
+        const now = new Date();
+        const m = now.getMonth(), y = now.getFullYear();
+
+        const monthRows = rows.filter(([,,ci,co]) => ci instanceof Date && co instanceof Date && ci.getMonth()===m && ci.getFullYear()===y);
+        if(!monthRows.length) return showToast('No completed logs from this month.','info');
+
+        // download CSV of this month
+        let csv = "Name,Program,Check-In Time,Check-Out Time,Duration (min)\n";
+        for(const r of monthRows){
+          csv += r.map(v => `"${v instanceof Date ? v.toLocaleString() : (v ?? '')}"`).join(",") + "\n";
+        }
+        const blob = new Blob([csv], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `student_logs_${now.toLocaleString('default',{month:'long'})}_${y}.csv`;
+        a.click();
+
+        if(!confirm("Archive complete. Delete ALL completed logs from this month?")) return;
+
+        // delete
+        const studentsSnap = await db.collection('users').doc(managerUid).collection('students').get({ source:'server' });
+        for(const st of studentsSnap.docs){
+          const ref = db.collection('users').doc(managerUid).collection('students').doc(st.id);
+          const sess = await ref.collection('sessions').get({ source:'server' });
+          for(const d of sess.docs){
+            const v = d.data(); const ci = v.checkInTime?.toDate(); const co = v.checkOutTime?.toDate();
+            if(ci && co && ci.getMonth()===m && ci.getFullYear()===y){
+              await ref.collection('sessions').doc(d.id).delete();
+            }
+          }
+        }
+        await db.waitForPendingWrites();
+        showToast('Completed logs deleted.','success');
+        loadLogs();
+      }catch(err){
+        console.error(err);
+        showToast(err.message || 'Archive failed.', 'error', 3400);
+      }
+    }
+  </script>
+</body>
+</html>
+

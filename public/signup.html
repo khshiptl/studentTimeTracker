@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign Up</title>
+
+  <!-- Firebase SDKs (v8 style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <!-- Your shared initializer (project config + initializeApp) -->
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    /* ====== Aesthetic (your colors) ====== */
+    body {
+      font-family: sans-serif;
+      background-color: #7aafbb;           /* pastel blue background */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #000;
+    }
+    @keyframes popIn { from {opacity:0; transform:scale(.95)} to {opacity:1; transform:scale(1)} }
+    .signup-box {
+      background: #cce6eb;                 /* card color */
+      padding: 40px 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+      width: 320px;
+      text-align: center;
+      animation: popIn .5s ease-out;
+    }
+    .signup-box h2 { margin-bottom: 20px; font-size: 1.8em; }
+
+    /* Inputs keep same size even when type changes */
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+      box-sizing: border-box;
+      outline: none;
+    }
+
+    .row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; margin-top: 6px; }
+    .row input[type="checkbox"] { margin: 0; }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 15px;
+      background-color: #6497a5;           /* button color */
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 1em;
+      color: black;
+    }
+    .resend-btn { background-color: #88bdbc; margin-top: 10px; }
+    .resend-btn[disabled] { opacity: .6; cursor: not-allowed; }
+
+    a { font-size: .9em; color: #4a00b4; text-decoration: none; display:inline-block; margin-top:10px; }
+
+    #message { margin-top: 12px; font-size: .95em; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="signup-box">
+    <h2>Sign Up</h2>
+
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
+    <input type="password" id="confirmPassword" placeholder="Confirm Password" />
+
+    <div class="row">
+      <input type="checkbox" id="showPassword" />
+      <label for="showPassword">Show Password</label>
+    </div>
+
+    <button id="createBtn">Create Account</button>
+    <button id="resendBtn" class="resend-btn" disabled>Resend Verification Email</button>
+
+    <a href="index.html">Back to Login</a>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    // Firebase handles are available from ./js/firebase-init.js
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    // Elements
+    const emailEl   = document.getElementById("email");
+    const passEl    = document.getElementById("password");
+    const confirmEl = document.getElementById("confirmPassword");
+    const msgEl     = document.getElementById("message");
+    const resendBtn = document.getElementById("resendBtn");
+    const createBtn = document.getElementById("createBtn");
+    let cooldownTimer = null; // prevents overlapping timers
+
+    // Keep inputs the same size when toggling visibility
+    document.getElementById("showPassword").addEventListener("change", function () {
+      const type = this.checked ? "text" : "password";
+      passEl.type = type;
+      confirmEl.type = type;
+    });
+
+    function setMsg(text, color) {
+      msgEl.textContent = text;
+      msgEl.style.color = color;
+    }
+
+    function startCooldown(seconds = 60) {
+      // stop any older timer first
+      if (cooldownTimer) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+      }
+
+      let remaining = seconds;
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Resend Verification Email (${remaining}s)`;
+
+      cooldownTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearInterval(cooldownTimer);
+          cooldownTimer = null;
+          resendBtn.disabled = false;
+          resendBtn.textContent = "Resend Verification Email";
+        } else {
+          resendBtn.textContent = `Resend Verification Email (${remaining}s)`;
+        }
+      }, 1000);
+    }
+
+    createBtn.addEventListener("click", async () => {
+      setMsg("", "red");
+      const email = emailEl.value.trim();
+      const pwd   = passEl.value;
+      const conf  = confirmEl.value;
+
+      if (!email || !pwd || !conf)   return setMsg("Please fill in all fields.", "red");
+      if (pwd !== conf)              return setMsg("Passwords do not match.", "red");
+      if (pwd.length < 6)            return setMsg("Password should be at least 6 characters.", "red");
+
+      try {
+        const cred = await auth.createUserWithEmailAndPassword(email, pwd);
+        const user = cred.user;
+
+        // create a minimal user doc, then send verification
+        await db.collection("users").doc(user.uid).set({
+          role: "manager",
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await user.sendEmailVerification();
+        setMsg("✅ Account created! Check your email to verify. (If you don’t see it, check Spam/Promotions, or click Resend option.)", "green");
+
+        // enable resend with a cooldown to avoid rate limits
+        resendBtn.disabled = false;
+        startCooldown(60);
+
+      } catch (error) {
+        console.error(error);
+        const map = {
+          "auth/email-already-in-use": "That email is already registered. Try logging in or reset your password.",
+          "auth/invalid-email":        "Please enter a valid email address.",
+          "auth/weak-password":        "Password should be at least 6 characters.",
+          "auth/operation-not-allowed":"Email/password sign-in is disabled for this project."
+        };
+        setMsg(map[error.code] || (error.message || "Could not create account."), "red");
+      }
+    });
+
+    resendBtn.addEventListener("click", async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return setMsg("Please log in first to resend verification.", "red");
+        await user.sendEmailVerification();
+        setMsg("📧 Verification email resent. Check your inbox/spam. (Some school domains filter these.)", "green");
+        startCooldown(60);
+      } catch (error) {
+        console.error(error);
+        if (error.code === "auth/too-many-requests") {
+          setMsg("We’re throttling requests. Please wait a minute before trying again.", "red");
+        } else {
+          setMsg(error.message || "Could not resend verification email.", "red");
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+

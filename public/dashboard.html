@@ -1,0 +1,315 @@
+<!-- Dashboard with Search & Autocomplete -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    body { margin: 0; background-color: #fef3dc; font-family: sans-serif; }
+    .header { background-color: #7aafbb; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 1.5em; }
+    .nav-btn { background-color: #cce6eb; color: #7aafbb; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.95em; margin-right: 10px; transition: background-color .15s ease, color .15s ease; }
+    .nav-btn:hover { background-color: #7aafbb; color: white; }
+    .logout-btn { background-color: white; color: #7aafbb; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.95em; transition: background-color .15s ease, color .15s ease; }
+    .logout-btn:hover { background-color: #7aafbb; color: white; }
+
+    .table-container { background: white; width: 98%; max-width: 1200px; margin: 30px auto; padding: 30px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    h2 { margin-top: 0; font-size: 1.4em; }
+    #current-date { margin: 6px 0 20px 0; font-size: 1em; color: #444; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 1em; }
+    th { background-color: #e6f3f7; text-align: left; padding: 14px 16px; }
+    td { padding: 14px 16px; border-top: 1px solid #ddd; vertical-align: top; }
+
+    .timer { padding: 6px 14px; border-radius: 18px; display: inline-block; }
+    .status-green  { background-color: #c4d89e; }
+    .status-yellow { background-color: #fcd67b; }
+    .status-red    { background-color: #f4a5a5; }
+    .status-none   { display: inline-block; width: 5px; height: 1px; background-color: #d9d9d9; border-radius: 999px; content: ""; }
+    .checkin-btn, .checkout-btn { padding: 8px 14px; background-color: #cce6eb; border: none; border-radius: 6px; font-size: 0.95em; cursor: pointer; transition: background-color .15s ease, color .15s ease; }
+    .checkin-btn:hover, .checkout-btn:hover { background-color: #7aafbb; color: white; }
+
+    .top-controls { margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .msg { margin-top: 8px; color: #b00020; min-height: 1.2em; }
+
+    /* Search Bar + Dropdown */
+    #searchContainer { position: relative; }
+    #studentSearch { padding: 8px 12px; width: 200px; border-radius: 6px; border: 1px solid #ccc; }
+    #suggestions { 
+      position: absolute; top: 36px; left: 0; right: 0; 
+      background: white; border: 1px solid #ccc; border-radius: 6px;
+      max-height: 150px; overflow-y: auto; display: none; z-index: 5;
+    }
+    #suggestions div { padding: 8px; cursor: pointer; }
+    #suggestions div:hover { background-color: #e6f3f7; }
+
+    /* Highlight when found */
+    .highlighted-row { animation: highlightFade 2.5s ease; background-color: #fff6b2 !important; }
+    @keyframes highlightFade {
+      0% { background-color: #fff6b2; }
+      100% { background-color: transparent; }
+    }
+
+    /* Toast */
+    .toast{ position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(8px); background: #ffffff; color: #2a3b44; border: 1px solid rgba(0,0,0,.08); box-shadow: 0 14px 28px rgba(0,0,0,.12); padding: 12px 16px; border-radius: 14px; min-width: 220px; text-align: center; font-size: .95em; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+    .toast--show{ opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+    .toast--info{ border-left: 6px solid #7aafbb; }
+    .toast--success{ border-left: 6px solid #88c4a0; }
+    .toast--warn{ border-left: 6px solid #fcd67b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Welcome to Student Time Tracker</h1>
+    <div>
+      <button class="nav-btn" onclick="window.location.href='settings.html'">Edit/Settings</button>
+      <button class="nav-btn" onclick="window.location.href='logs.html'">Logs</button>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <h2>Student Time Tracker</h2>
+    <p id="current-date"></p>
+
+    <div class="top-controls">
+      <div id="searchContainer">
+        <input type="text" id="studentSearch" placeholder="Search student..." />
+        <div id="suggestions"></div>
+      </div>
+
+      <label for="sortOption"><strong>Sort by:</strong></label>
+      <select id="sortOption">
+        <option value="status" selected>Status (Red → Yellow → Green)</option>
+        <option value="checkin">Check-in Time</option>
+        <option value="name">Name (A–Z)</option>
+        <option value="program">Program Type</option>
+      </select>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Program</th>
+          <th>Timer</th>
+          <th>Check In</th>
+          <th>Check Out</th>
+        </tr>
+      </thead>
+      <tbody id="student-table-body"></tbody>
+    </table>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script>
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    let studentsRef = null;
+    let unsubscribe = null;
+    const startTimes = {}, timers = {};
+    let allStudents = [];
+
+    const SINGLE_GREEN_MAX = 30;
+    const SINGLE_YELLOW_MAX = 45;
+    const BOTH_GREEN_MAX = 60;
+    const BOTH_YELLOW_MAX = 75;
+
+    const toastEl = document.getElementById('toast');
+    function showToast(text, type='info', ms=2400){
+      toastEl.textContent = text;
+      toastEl.className = 'toast';
+      toastEl.classList.add('toast--show', `toast--${type}`);
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=> toastEl.classList.remove('toast--show'), ms);
+    }
+
+    function statusScore(student, now) {
+      const t = student.checkInTime?.toDate ? student.checkInTime.toDate() : null;
+      if (!t) return 999;
+      const mins = Math.floor((now - t) / 60000);
+      if ((student.program || '') === 'both') {
+        return mins <= BOTH_GREEN_MAX ? 0 : mins <= BOTH_YELLOW_MAX ? 1 : 2;
+      } else {
+        return mins <= SINGLE_GREEN_MAX ? 0 : mins <= SINGLE_YELLOW_MAX ? 1 : 2;
+      }
+    }
+
+    function statusRank(student, now) {
+      const score = statusScore(student, now);
+      return score === 2 ? 0 : score === 1 ? 1 : 2;
+    }
+
+    if (!window.__dashboardAuthListenerAdded) {
+      window.__dashboardAuthListenerAdded = true;
+      auth.onAuthStateChanged(async user => {
+        if (!user) { window.location.href = "index.html"; return; }
+        studentsRef = db.collection("users").doc(user.uid).collection("students");
+        attachStudentsListener();
+      });
+    }
+
+    function attachStudentsListener() {
+      const tableBody = document.getElementById("student-table-body");
+      const sortOption = document.getElementById("sortOption").value;
+      tableBody.innerHTML = "";
+      Object.keys(timers).forEach(id => { clearInterval(timers[id]); delete timers[id]; });
+      Object.keys(startTimes).forEach(id => { delete startTimes[id]; });
+      if (typeof unsubscribe === 'function') { unsubscribe(); unsubscribe = null; }
+
+      unsubscribe = studentsRef.onSnapshot(snapshot => {
+        tableBody.innerHTML = "";
+        Object.keys(timers).forEach(id => { clearInterval(timers[id]); delete timers[id]; });
+        allStudents = [];
+        snapshot.forEach(doc => {
+          const s = doc.data();
+          s.id = doc.id;
+          allStudents.push(s);
+        });
+
+        const now = new Date();
+        allStudents.sort((a, b) => {
+          if (sortOption === "name") return (a.name || "").localeCompare(b.name || "");
+          if (sortOption === "program") return (a.program || "").localeCompare(b.program || "");
+          if (sortOption === "checkin") {
+            const at = a.checkInTime?.toDate ? a.checkInTime.toDate() : null;
+            const bt = b.checkInTime?.toDate ? b.checkInTime.toDate() : null;
+            return (at || 0) - (bt || 0);
+          }
+          return statusRank(a, now) - statusRank(b, now);
+        });
+
+        allStudents.forEach(student => {
+          const id = student.id;
+          const checkInTime = student.checkInTime?.toDate ? student.checkInTime.toDate() : null;
+          const row = document.createElement("tr");
+          row.id = `row-${id}`;
+          row.innerHTML = `
+            <td>${student.name || "Unnamed"}${checkInTime ? `<div style="font-size:0.85em;color:gray;">Checked in at: ${checkInTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>` : ""}</td>
+            <td>${student.program || "-"}</td>
+            <td><span class="timer status-none" id="timer-${id}"></span></td>
+            <td><button class="checkin-btn" onclick="handleCheckIn('${id}', '${student.program || ""}')">Check In</button></td>
+            <td><button class="checkout-btn" onclick="handleCheckOut('${id}')">Check Out</button></td>
+          `;
+          tableBody.appendChild(row);
+          if (checkInTime) {
+            startTimes[id] = checkInTime;
+            updateTimer(id, student.program || "");
+            timers[id] = setInterval(() => updateTimer(id, student.program || ""), 1000);
+          }
+        });
+      }, err => {
+        console.error(err);
+        document.getElementById("msg").textContent = err.message || "Could not load students.";
+      });
+    }
+
+    document.getElementById("sortOption").addEventListener("change", attachStudentsListener);
+
+    function logout() { auth.signOut().then(() => { window.location.href = "index.html"; }); }
+
+    async function handleCheckIn(id, program) {
+      if (!studentsRef) return;
+      try {
+        const now = new Date();
+        const ts  = firebase.firestore.Timestamp.fromDate(now);
+        const studentRef = studentsRef.doc(id);
+        startTimes[id] = now;
+        await studentRef.update({ checkInTime: ts });
+        await studentRef.collection("sessions").add({ checkInTime: ts, checkOutTime: null });
+        if (timers[id]) clearInterval(timers[id]);
+        timers[id] = setInterval(() => updateTimer(id, program), 1000);
+      } catch (e) {
+        console.error('handleCheckIn error', e);
+        document.getElementById('msg').textContent = e.message || 'Check-in failed.';
+      }
+    }
+
+    async function handleCheckOut(id) {
+      if (!studentsRef) return;
+      try {
+        if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
+        delete startTimes[id];
+
+        const now = new Date();
+        const ts  = firebase.firestore.Timestamp.fromDate(now);
+        const studentRef = studentsRef.doc(id);
+        await studentRef.update({ checkInTime: null });
+
+        const recent = await studentRef.collection("sessions").orderBy("checkInTime", "desc").limit(5).get();
+        const open = recent.docs.find(d => !d.data().checkOutTime);
+        if (open) await open.ref.update({ checkOutTime: ts });
+
+        const el = document.getElementById(`timer-${id}`);
+        if (el) { el.className = "timer status-none"; el.textContent = ""; }
+      } catch (e) {
+        console.error('handleCheckOut error', e);
+        document.getElementById('msg').textContent = e.message || 'Check-out failed.';
+      }
+    }
+
+    function updateTimer(id, program) {
+      const el = document.getElementById(`timer-${id}`);
+      const start = startTimes[id];
+      if (!start || !el) return;
+      const diffMin = Math.floor((Date.now() - start.getTime()) / 60000);
+      el.textContent = `${diffMin} min`;
+      if (program === 'both') {
+        el.className = diffMin <= BOTH_GREEN_MAX ? "timer status-green" : diffMin <= BOTH_YELLOW_MAX ? "timer status-yellow" : "timer status-red";
+      } else {
+        el.className = diffMin <= SINGLE_GREEN_MAX ? "timer status-green" : diffMin <= SINGLE_YELLOW_MAX ? "timer status-yellow" : "timer status-red";
+      }
+    }
+
+    // --- Search + Autocomplete ---
+    const searchInput = document.getElementById("studentSearch");
+    const suggestionBox = document.getElementById("suggestions");
+
+    searchInput.addEventListener("input", () => {
+      const val = searchInput.value.trim().toLowerCase();
+      if (val.length < 1) { suggestionBox.style.display = "none"; return; }
+      const matches = allStudents.filter(s => (s.name || "").toLowerCase().includes(val));
+      if (!matches.length) { suggestionBox.style.display = "none"; return; }
+
+      suggestionBox.innerHTML = matches.map(m => `<div data-id="${m.id}">${m.name}</div>`).join("");
+      suggestionBox.style.display = "block";
+    });
+
+    suggestionBox.addEventListener("click", e => {
+      const id = e.target.dataset.id;
+      if (!id) return;
+      highlightAndScroll(id);
+      suggestionBox.style.display = "none";
+      searchInput.value = "";
+    });
+
+    function highlightAndScroll(id) {
+      const row = document.getElementById(`row-${id}`);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.add("highlighted-row");
+        setTimeout(() => row.classList.remove("highlighted-row"), 2500);
+      }
+    }
+
+    document.addEventListener("click", e => {
+      if (!e.target.closest("#searchContainer")) suggestionBox.style.display = "none";
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const dateEl = document.getElementById("current-date");
+      dateEl.textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    });
+  </script>
+</body>
+</html>
+

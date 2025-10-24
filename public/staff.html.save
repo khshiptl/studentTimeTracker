@@ -1,0 +1,289 @@
+q  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staff Panel</title>
+
+  <!-- Firebase v8 SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <!-- Shared initializer (same one you use in settings.html) -->
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    body { margin: 0; background-color: #fef3dc; font-family: sans-serif; }
+    .navbar { background-color: #68bcc1; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; color: white; }
+    .navbar h1 { font-size: 1.4em; margin: 0; }
+    .logout-btn { padding: 8px 16px; background-color: #56b0ad; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1em; }
+    .content { padding: 16px; }
+
+    .toggle-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; text-align: center; }
+    .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #7ac26f; }
+    input:checked + .slider:before { transform: translateX(24px); }
+
+    .student-card { background: white; border-radius: 15px; padding: 16px; margin: 20px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05); word-wrap: break-word; overflow-wrap: anywhere; }
+    .timer { display: inline-block; padding: 6px 12px; border-radius: 18px; font-size: 0.95em; background-color: #d9d9d9; margin-bottom: 10px; }
+    .status-green { background-color: #c4d89e; }
+    .status-yellow { background-color: #fcd67b; }
+    .status-red { background-color: #f4a5a5; }
+
+    .checkin-btn, .checkout-btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1em; margin-top: 10px; }
+    .checkin-btn { background-color: #A9D8E5; color: black; }
+    .checkout-btn { background-color: #E08879; color: black; }
+
+    /* Logout modal */
+    #logoutModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.3); align-items: center; justify-content: center; z-index: 999; }
+    #logoutModal.show { display: flex; }
+    #logoutModalContent { background: white; padding: 20px 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); text-align: center; }
+    .logout-modal-btns { display: flex; justify-content: center; gap: 15px; margin-top: 20px; }
+    .logout-modal-btns button { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; }
+    .cancel-btn { background-color: #ccc; }
+    .confirm-btn { background-color: #e07f6d; color: white; }
+
+    /* PIN UI */
+    #pinPrompt { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: #fef3dc; display: flex; justify-content: center; align-items: center; }
+    #pinBox { background: white; padding: 40px 30px; border-radius: 16px; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12); width: 100%; max-width: 400px; text-align: center; }
+    #pinBox input { font-size: 1.2em; padding: 10px; width: 100%; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 6px; }
+    #pinBox button { padding: 10px 20px; font-size: 1em; border: none; border-radius: 6px; background-color: #e07f6d; color: white; cursor: pointer; }
+    #pinError { color:#d9534f; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <!-- PIN entry -->
+  <div id="pinPrompt">
+    <div id="pinBox">
+      <h3>Enter 4-Digit Staff PIN</h3>
+      <input type="text" id="pinInput" maxlength="4" />
+      <br />
+      <button id="pinSubmitBtn" type="button">Submit</button>
+      <p id="pinError"></p>
+    </div>
+  </div>
+
+  <!-- Staff Panel -->
+  <div id="staffPanel" style="display:none;">
+    <div class="navbar">
+      <h1>Staff Panel</h1>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="content">
+      <div class="toggle-container">
+        <label class="switch">
+          <input type="checkbox" id="toggleChecked">
+          <span class="slider"></span>
+        </label>
+        <p id="toggleLabel">Show only checked-in students</p>
+        <p id="checkedInCount">Checked In: 0</p>
+      </div>
+      <div id="studentList"></div>
+    </div>
+  </div>
+
+  <!-- Logout modal -->
+  <div id="logoutModal">
+    <div id="logoutModalContent">
+      <h3>Are you sure you want to logout?</h3>
+      <div class="logout-modal-btns">
+        <button class="cancel-btn" onclick="hideLogoutModal()">Cancel</button>
+        <button class="confirm-btn" onclick="confirmLogout()">Yes, Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const pinErr = document.getElementById('pinError');
+      const pinInput = document.getElementById('pinInput');
+      const pinBtn = document.getElementById('pinSubmitBtn');
+
+      function uiError(msg){ if(pinErr) pinErr.textContent = msg; console.error(msg); }
+
+      // Guards: SDKs + init
+      if (!window.firebase) { uiError("Firebase SDK failed to load."); return; }
+      if (!firebase.apps || firebase.apps.length === 0) { uiError("firebase-init.js didn’t run."); return; }
+
+      const db = firebase.firestore();
+      let managerUid = null;
+      let students = [];
+      const startTimes = {};
+      const timers = {};
+
+      // === Verify PIN using collection group staffPins (field 'pin') ===
+      async function verifyPin(){
+        const entered = (pinInput.value || '').trim();
+        pinErr.textContent = '';
+        if (!entered){ pinErr.textContent = "Please enter a PIN."; return; }
+
+        pinBtn.disabled = true; pinBtn.textContent = "Checking…";
+        try {
+          const snap = await db.collectionGroup('staffPins')
+            .where('pin', '==', entered)  // query by field (avoids documentId() path issue)
+            .limit(1)
+            .get();
+
+          if (snap.empty) {
+            pinErr.textContent = "Incorrect PIN.";
+          } else {
+            const data = snap.docs[0].data() || {};
+            if (!data.uid) {
+              pinErr.textContent = "PIN doc missing UID.";
+            } else {
+              managerUid = data.uid;
+              localStorage.setItem('staffAccess','granted');
+              localStorage.setItem('managerUid', managerUid);
+              document.getElementById('pinPrompt').style.display = 'none';
+              document.getElementById('staffPanel').style.display = 'block';
+              loadStudents();
+            }
+          }
+        } catch (e) {
+          uiError(e.message || "PIN lookup failed.");
+        } finally {
+          pinBtn.disabled = false; pinBtn.textContent = "Submit";
+        }
+      }
+      pinBtn.addEventListener('click', verifyPin);
+
+      // === Restore session if already verified ===
+      (function restore(){
+        hideLogoutModal();
+        if (localStorage.getItem('staffAccess') === 'granted') {
+          managerUid = localStorage.getItem('managerUid');
+          if (!managerUid) {
+            alert("Could not load manager. Please re-enter PIN.");
+            localStorage.removeItem('staffAccess');
+            localStorage.removeItem('managerUid');
+            location.reload();
+            return;
+          }
+          document.getElementById('pinPrompt').style.display = 'none';
+          document.getElementById('staffPanel').style.display = 'block';
+          loadStudents();
+        }
+      })();
+
+      // === Logout modal (expose for inline onclicks) ===
+      function logout(){ document.getElementById('logoutModal').classList.add('show'); }
+      function hideLogoutModal(){ document.getElementById('logoutModal').classList.remove('show'); }
+      function confirmLogout(){
+        hideLogoutModal();
+        localStorage.removeItem('staffAccess');
+        localStorage.removeItem('managerUid');
+        setTimeout(()=>location.reload(), 200);
+      }
+      window.logout = logout;
+      window.hideLogoutModal = hideLogoutModal;
+      window.confirmLogout = confirmLogout;
+
+      // === Live students list for the manager ===
+      function loadStudents(){
+        if (!managerUid) return;
+        db.collection('users').doc(managerUid).collection('students')
+          .onSnapshot(snap=>{
+            students = [];
+            Object.keys(timers).forEach(id => clearInterval(timers[id]));
+            snap.forEach(doc => students.push({ id: doc.id, ...doc.data() }));
+            renderStudents();
+          }, err=>{
+            console.error(err);
+            alert(`Student list error: ${err.code||''} ${err.message||''}`);
+          });
+      }
+
+      function renderStudents(){
+        const container = document.getElementById('studentList');
+        const showChecked = document.getElementById('toggleChecked').checked;
+        container.innerHTML = '';
+        let count = 0;
+
+        students.forEach(s=>{
+          const isCheckedIn = !!s.checkInTime;
+          if (showChecked && !isCheckedIn) return;
+          if (isCheckedIn) count++;
+
+          const card = document.createElement('div');
+          card.className = 'student-card';
+          card.innerHTML = `
+            <h3 style="font-weight:bold; font-size:1.1em;">${s.name || "Unnamed"}</h3>
+            <p style="margin: 4px 0; font-size: 0.95em;">${s.program || "N/A"}</p>
+            <div id="timer-${s.id}" class="timer">${isCheckedIn ? "0 min" : "Not Checked In"}</div>
+            <button class="checkin-btn" data-id="${s.id}">Check In</button>
+            <button class="checkout-btn" data-id="${s.id}">Check Out</button>
+          `;
+          container.appendChild(card);
+
+          // Attach handlers
+          card.querySelector('.checkin-btn').addEventListener('click', ()=>handleCheckIn(s.id, s.program, isCheckedIn));
+          card.querySelector('.checkout-btn').addEventListener('click', ()=>handleCheckOut(s.id, isCheckedIn));
+
+          if (isCheckedIn && s.checkInTime && s.checkInTime.toDate) {
+            const start = s.checkInTime.toDate();
+            startTimes[s.id] = start;
+            updateTimer(s.id, s.program);
+            timers[s.id] = setInterval(()=>updateTimer(s.id, s.program), 1000);
+          }
+        });
+
+        document.getElementById('checkedInCount').textContent = `Checked In: ${count}`;
+      }
+
+      // === Check In / Out ===
+      async function handleCheckIn(id, program, alreadyIn){
+        if (alreadyIn) return alert("Student is already checked in.");
+        try {
+          const now = new Date();
+          const ts = firebase.firestore.Timestamp.fromDate(now);
+          startTimes[id] = now;
+          const ref = db.collection('users').doc(managerUid).collection('students').doc(id);
+          await ref.update({ checkInTime: ts });
+          await ref.collection('sessions').add({ checkInTime: ts, checkOutTime: null });
+          updateTimer(id, program);
+          timers[id] = setInterval(()=>updateTimer(id, program), 1000);
+        } catch (e) {
+          console.error(e); alert(`Check-in failed: ${e.message||e}`);
+        }
+      }
+
+      async function handleCheckOut(id, isCheckedIn){
+        if (!isCheckedIn) return alert("Student is already checked out.");
+        try {
+          clearInterval(timers[id]); delete startTimes[id];
+          const ts = firebase.firestore.Timestamp.fromDate(new Date());
+          const ref = db.collection('users').doc(managerUid).collection('students').doc(id);
+          await ref.update({ checkInTime: null });
+          const snap = await ref.collection('sessions').orderBy('checkInTime','desc').limit(1).get();
+          const open = snap.docs.find(d => !d.data().checkOutTime);
+          if (open) await open.ref.update({ checkOutTime: ts });
+          const el = document.getElementById(`timer-${id}`);
+          if (el) { el.className = 'timer'; el.textContent = 'Not Checked In'; }
+        } catch (e) {
+          console.error(e); alert(`Check-out failed: ${e.message||e}`);
+        }
+      }
+
+      // === Timer + status colors ===
+      function updateTimer(id, program){
+        const el = document.getElementById(`timer-${id}`);
+        const start = startTimes[id];
+        if (!start || !el) return;
+        const diffMin = Math.floor((Date.now() - start.getTime()) / 60000);
+        el.textContent = `${diffMin} min`;
+        if (program === 'both') {
+          el.className = diffMin <= 65 ? 'timer status-green'
+                       : diffMin <= 80 ? 'timer status-yellow'
+                       : 'timer status-red';
+        } else {
+          el.className = diffMin <= 35 ? 'timer status-green'
+                       : diffMin <= 50 ? 'timer status-yellow'
+                       : 'timer status-red';
+        }
+      }
+
+      document.getElementById('toggleChecked').addEventListener('change', renderStudents);
+    });
+  </script>
+</body>
+</html>
+

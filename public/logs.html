@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Session Logs</title>
+
+  <!-- Firebase v8 (uses ./js/firebase-init.js for config/initializeApp) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    :root{
+      --bg1:#fef3dc; --bg2:#f9efe2;
+      --card:#fff; --ink:#27323a; --muted:#eaf4f8; --muted-ink:#5a6b73;
+      --accent:#7aafbb; --accent-700:#6699a8; --accent-soft:#a9d8e5;
+      --border:#e7edf0; --danger:#eea5a5; --danger-700:#dc6b6b; --success:#88c4a0;
+      --shadow:0 10px 30px rgba(0,0,0,.07); --radius:16px; --radius-sm:12px;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; color:var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+      background: radial-gradient(1200px 600px at 20% -10%, var(--bg2), transparent 60%),
+                  radial-gradient(1200px 600px at 120% 0%, var(--bg1), transparent 60%),
+                  var(--bg1);
+      padding: 36px 18px 64px; display:flex; justify-content:center;
+    }
+    .shell{ width:min(1100px,100%); }
+
+    .nav{ display:flex; gap:10px; justify-content:center; margin-bottom:18px; }
+    .btn{ appearance:none; border:none; border-radius:12px; padding:10px 18px; font-weight:700; cursor:pointer;
+          background:#a9d8e5; color:#233740; transition:all .18s ease; }
+    .btn:hover{ background:var(--accent); color:#fff; }
+    .btn--primary{ background:var(--accent); color:#fff; }
+    .btn--primary:hover{ background:var(--accent-700); }
+    .btn--danger{ background:var(--danger); color:#fff; }
+    .btn--danger:hover{ background:var(--danger-700); }
+    .btn--ghost{ background:#f6fafc; color:#2b4350; border:1px solid var(--border); }
+    .btn--ghost:hover{ background:#eaf2f6; }
+    .btn--small{ padding:8px 12px; border-radius:10px; }
+
+    .card{ background:var(--card); box-shadow:var(--shadow); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    .card__header{ padding:22px 26px; background:linear-gradient(180deg,#f9fdff,#f5fbfe); border-bottom:1px solid var(--border);}
+    .card__title{ margin:0; font-size:22px; text-align:center; letter-spacing:.2px; }
+    .subhead{ text-align:center; color:#4b6069; margin:6px 0 -6px; font-weight:700; }
+
+    .card__body{ padding:20px 22px 26px; }
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-bottom:14px; }
+
+    /* Filters */
+    .filters{
+      background:#fcfeff; border:1px solid var(--border); border-radius: var(--radius-sm);
+      padding:14px; display:flex; flex-direction:column; gap:10px; margin-bottom:14px;
+    }
+    .f-row{ display:grid; grid-template-columns: 1.2fr .8fr auto; gap:10px; align-items:center; }
+    .f-row--bottom{
+      grid-template-columns: .6fr .06fr .6fr .6fr .8fr .8fr auto;
+    }
+    @media (max-width:960px){
+      .f-row{ grid-template-columns:1fr; }
+      .f-row--bottom{ grid-template-columns:1fr; }
+      .between{ display:none; }
+      .filters .right { justify-content:flex-start; }
+    }
+    .between{ text-align:center; color:#6b7d84; font-weight:700; }
+    .right{ display:flex; justify-content:flex-end; }
+
+    input[type="text"], input[type="date"], select{
+      width:100%; border:1px solid #d7e2e6; background:#fafcfd; border-radius:10px;
+      padding:10px 12px; font-size:14px; color:#2a3b44;
+      outline:none; transition: box-shadow .15s ease, border-color .15s ease;
+    }
+    input:focus, select:focus{ border-color:#b7d1da; box-shadow:0 0 0 3px rgba(122,175,187,.18); }
+    label.cb{ display:flex; align-items:center; gap:8px; font-weight:700; color:#2a3b44; }
+
+    /* Date groups */
+    .day{
+      border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff; margin-bottom:12px;
+    }
+    .day__head{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:14px 16px; background:#f7fbfd; }
+    .day__title{ margin:0; font-size:20px; font-weight:800; letter-spacing:.2px; }
+    .badges{ display:flex; gap:8px; flex-wrap:wrap; }
+    .pill{ background:#f3f8fa; border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:13px; }
+    .open-pill{ background:#fff7e6; border-color:#ffe1a8; }
+
+    .day__body{ padding:8px 12px 14px; }
+    .table{ width:100%; border-collapse:separate; border-spacing:0; }
+    .table th{ background:var(--muted); color:#28424d; font-weight:800; letter-spacing:.2px;
+               padding:12px 14px; text-align:left; border-bottom:1px solid var(--border); }
+    .table td{ padding:12px 14px; border-bottom:1px solid var(--border); }
+    .table tr:nth-child(even){ background:#fcfdfe; }
+    .empty{ color:#6b7d84; font-style:italic; padding:12px; text-align:center; }
+
+    /* Student groups */
+    .group{ border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff; margin-bottom:12px; }
+    .group__head{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:14px 16px; background:#f7fbfd; cursor:pointer; }
+    .group__title{ margin:0; font-size:18px; font-weight:800; letter-spacing:.2px; }
+    .group__body{ display:none; padding:8px 12px 14px; }
+    .group.open .group__body{ display:block; }
+
+    /* Toast */
+    .toast{
+      position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+      background:#fff; color:#222; border:1px solid rgba(0,0,0,.06); box-shadow:0 14px 28px rgba(0,0,0,.12);
+      padding:12px 16px; border-radius:14px; min-width:220px; text-align:center; font-size:.95em;
+      opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
+    }
+    .toast--show{ opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+    .toast--success{ border-left:6px solid var(--success); }
+    .toast--error{ border-left:6px solid var(--danger-700); }
+    .toast--info{ border-left:6px solid var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav">
+      <button class="btn" onclick="location.href='dashboard.html'">Dashboard</button>
+      <button class="btn" onclick="location.href='settings.html'">Edit/Settings</button>
+      <button class="btn" id="logoutBtn">Logout</button>
+    </nav>
+
+    <section class="card">
+      <header class="card__header">
+        <h1 class="card__title">Student Session Logs</h1>
+        <div class="subhead" id="todayPill"></div>
+      </header>
+
+      <div class="card__body">
+        <div class="actions">
+          <button class="btn btn--ghost btn--small" id="downloadBtn">Download CSV</button>
+          <button class="btn btn--danger btn--small" id="archiveBtn">Archive & Delete This Month</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters">
+          <div class="f-row">
+            <input type="text" id="studentSearch" placeholder="Search student name…"/>
+            <select id="programFilter">
+              <option value="all">All programs</option>
+              <option value="math">Math</option>
+              <option value="reading">Reading</option>
+              <option value="both">Both</option>
+            </select>
+            <div class="right">
+              <button class="btn btn--ghost btn--small" id="resetBtn">Reset</button>
+            </div>
+          </div>
+
+          <div class="f-row f-row--bottom">
+            <input type="date" id="startDate"/>
+            <div class="between">to</div>
+            <input type="date" id="endDate"/>
+            <label class="cb"><input type="checkbox" id="completedOnly"/> Completed only</label>
+            <select id="groupBy">
+              <option value="date" selected>Group by: Date</option>
+              <option value="student">Group by: Student</option>
+            </select>
+            <label class="cb"><input type="checkbox" id="showEmptyDays"/> Show empty days</label>
+            <div></div>
+          </div>
+        </div>
+
+        <div id="contentArea"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script>
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    const toastEl = document.getElementById('toast');
+    const contentEl = document.getElementById('contentArea');
+    const todayPill = document.getElementById('todayPill');
+
+    const searchEl = document.getElementById('studentSearch');
+    const programEl = document.getElementById('programFilter');
+    const startEl = document.getElementById('startDate');
+    const endEl = document.getElementById('endDate');
+    const completedEl = document.getElementById('completedOnly');
+    const groupByEl = document.getElementById('groupBy');
+    const showEmptyDaysEl = document.getElementById('showEmptyDays');
+
+    const resetBtn = document.getElementById('resetBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const archiveBtn = document.getElementById('archiveBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let managerUid = null;
+    let liveUnsub = null;
+    let renderToken = 0; // prevents stale double renders
+    let cleanupRan = false; // run cleanup once per load
+    window.__logData = []; // for CSV + archive
+
+    // helpers
+    function showToast(text, type='info', ms=2400){
+      toastEl.textContent = text;
+      toastEl.className = 'toast';
+      toastEl.classList.add('toast--show', `toast--${type}`);
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=> toastEl.classList.remove('toast--show'), ms);
+    }
+    function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+    function fmtDate(d){ return d ? d.toLocaleString() : '-'; }
+    function ymd(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+    function parseLocalYMD(s){ const [y,m,d]=s.split('-').map(n=>+n); const dt=new Date(y, m-1, d); dt.setHours(0,0,0,0); return dt; }
+
+    // header friendly date
+    (function(){
+      const opts = { weekday:'long', year:'numeric', month:'long', day:'numeric'};
+      todayPill.textContent = new Date().toLocaleDateString(undefined, opts);
+    })();
+
+    logoutBtn.addEventListener('click', ()=> auth.signOut().then(()=>location.href='index.html'));
+
+    // --- Safety: clear inconsistent student state if latest session is closed
+    async function sanitizeStudentState(studentRef) {
+      try {
+        const sDoc = await studentRef.get();
+        const s = sDoc.data() || {};
+        if (!s.checkInTime) return;
+
+        const latest = await studentRef.collection('sessions')
+          .orderBy('checkInTime','desc')
+          .limit(1)
+          .get({ source: 'server' });
+
+        const latestData = latest.docs[0]?.data();
+        if (latestData && latestData.checkOutTime) {
+          await studentRef.update({ checkInTime: null });
+          showToast('Fixed a ghost check-in (logs sync).','success');
+        }
+      } catch(e) {
+        console.warn('sanitizeStudentState error', e);
+      }
+    }
+
+    // --- Safety: auto-close open sessions from previous days (0-minute checkout)
+    async function cleanupOldOpenSessions(uid){
+      if (cleanupRan) return;
+      cleanupRan = true;
+
+      try {
+        const today = new Date(); today.setHours(0,0,0,0);
+        let fixedCount = 0;
+
+        const studentsSnap = await db.collection('users').doc(uid)
+          .collection('students').get({ source:'server' });
+
+        for (const sDoc of studentsSnap.docs){
+          const sRef = sDoc.ref;
+
+          const sessSnap = await sRef.collection('sessions')
+            .orderBy('checkInTime','desc')
+            .get({ source:'server' });
+
+          for (const d of sessSnap.docs){
+            const v = d.data();
+            const ci = v.checkInTime?.toDate();
+            if (ci && !v.checkOutTime && ci < today){
+              await d.ref.update({ checkOutTime: v.checkInTime });
+              fixedCount++;
+            }
+          }
+
+          await sanitizeStudentState(sRef);
+        }
+
+        if (fixedCount > 0){
+          const s = fixedCount === 1 ? '' : 's';
+          showToast(`Auto-closed ${fixedCount} old open session${s}.`,'info', 3000);
+        }
+      } catch(e){
+        console.warn('cleanupOldOpenSessions error', e);
+      }
+    }
+
+    // Single live listener; also run cleanup on first auth success
+    auth.onAuthStateChanged(user=>{
+      if(liveUnsub){ liveUnsub(); liveUnsub = null; }
+      if(!user){ location.href = "index.html"; return; }
+      managerUid = user.uid;
+
+      // run cleanup in background (non-blocking)
+      cleanupOldOpenSessions(managerUid);
+
+      liveUnsub = db.collection('users').doc(managerUid)
+        .collection('students')
+        .onSnapshot(()=> loadLogs());
+    });
+
+    const triggerLoad = debounce(loadLogs, 250);
+    searchEl.addEventListener('input', triggerLoad);
+    [programEl, startEl, endEl, completedEl, groupByEl, showEmptyDaysEl].forEach(el=> el.addEventListener('change', loadLogs));
+    resetBtn.addEventListener('click', ()=>{
+      searchEl.value=""; programEl.value="all";
+      startEl.value=""; endEl.value="";
+      completedEl.checked=false; groupByEl.value="date"; showEmptyDaysEl.checked=false;
+      loadLogs();
+    });
+    downloadBtn.addEventListener('click', downloadCSV);
+    archiveBtn.addEventListener('click', archiveAndDeleteCurrentMonth);
+
+    async function loadLogs(){
+      const myToken = ++renderToken;
+      contentEl.innerHTML = '';
+      const rows = [];
+
+      const search = (searchEl.value||'').toLowerCase();
+      const programFilter = programEl.value;
+      const completedOnly = completedEl.checked;
+      const groupBy = groupByEl.value;
+
+      const startDate = startEl.valueAsDate || null;
+      const endDate = endEl.valueAsDate || null;
+      if(endDate) endDate.setHours(23,59,59,999);
+      const wantEmptyDays = showEmptyDaysEl.checked && startDate && endDate;
+
+      // 1) Fetch all students once
+      const studentsSnap = await db.collection('users').doc(managerUid)
+        .collection('students').orderBy('name').get({ source:'server' });
+
+      // 2) Collect ALL sessions across students
+      const sessions = []; // { name, program, ci, co, dur, dateKey }
+      for(const sdoc of studentsSnap.docs){
+        const s = sdoc.data();
+        const name = s.name || '-';
+        const program = s.program || '-';
+
+        if(search && !name.toLowerCase().includes(search)) continue;
+        if(programFilter !== 'all' && program !== programFilter) continue;
+
+        const sessSnap = await db.collection('users').doc(managerUid)
+          .collection('students').doc(sdoc.id)
+          .collection('sessions').orderBy('checkInTime','desc').get({ source:'server' });
+
+        for(const d of sessSnap.docs){
+          const v = d.data();
+          const ci = v.checkInTime?.toDate(); const co = v.checkOutTime?.toDate();
+          if(!ci) continue;
+
+          const inRange = (!startDate || ci >= startDate) && (!endDate || ci <= endDate);
+          if(!inRange) continue;
+          if(completedOnly && !co) continue;
+
+          const dur = (ci && co) ? Math.floor((co-ci)/60000) : '-';
+          const dk = ymd(new Date(ci.getFullYear(), ci.getMonth(), ci.getDate()));
+          sessions.push({ name, program, ci, co, dur, dateKey: dk });
+          rows.push([name, program, ci, co, dur]);
+        }
+      }
+
+      if(myToken !== renderToken) return; // a newer load started; abort
+
+      // Background sanitize per student (quiet unless fixed)
+      studentsSnap.docs.forEach(sdoc => sanitizeStudentState(sdoc.ref));
+
+      // 3) Render by choice
+      if(groupBy === 'student'){
+        renderByStudent(sessions);
+      } else {
+        renderByDate(sessions, startDate, endDate, wantEmptyDays);
+      }
+
+      if(!rows.length && !wantEmptyDays){
+        contentEl.innerHTML = `<div class="day"><div class="day__head"><h3 class="day__title">No matching sessions found.</h3></div></div>`;
+      }
+      window.__logData = rows;
+    }
+
+    function renderByDate(sessions, startDate, endDate, showEmpty){
+      const map = new Map();
+      for (const s of sessions) {
+        const key = s.dateKey;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(s);
+      }
+
+      if (showEmpty && startDate && endDate) {
+        const cur = new Date(startDate); cur.setHours(0,0,0,0);
+        const end = new Date(endDate);  end.setHours(0,0,0,0);
+        for (let d = new Date(cur); d <= end; d.setDate(d.getDate() + 1)) {
+          const key = ymd(d);
+          if (!map.has(key)) map.set(key, []);
+        }
+      }
+
+      const keys = Array.from(map.keys()).sort((a,b)=> a>b ? -1 : a<b ? 1 : 0);
+
+      for (const dk of keys) {
+        const list = (map.get(dk) || []).slice().sort((a,b)=> b.ci - a.ci);
+        const openCount = list.reduce((m, x) => m + (x.co ? 0 : 1), 0);
+        const pretty = new Date(parseLocalYMD(dk)).toLocaleDateString(
+          undefined, { weekday:'long', year:'numeric', month:'long', day:'numeric' }
+        );
+
+        const day = document.createElement('section');
+        day.className = 'day';
+        day.innerHTML = `
+          <div class="day__head">
+            <h3 class="day__title">${pretty}</h3>
+            <div class="badges">
+              <span class="pill">${list.length} session${list.length===1?'':'s'}</span>
+              ${openCount ? `<span class="pill open-pill">${openCount} open</span>` : ''}
+            </div>
+          </div>
+          <div class="day__body"></div>
+        `;
+        const body = day.querySelector('.day__body');
+
+        if (!list.length) {
+          body.innerHTML = `<div class="empty">No sessions for this day.</div>`;
+        } else {
+          const tbl = document.createElement('table');
+          tbl.className = 'table';
+          tbl.innerHTML = `
+            <thead><tr>
+              <th>Student</th><th>Program</th><th>Check-In</th><th>Check-Out</th><th>Minutes</th>
+            </tr></thead><tbody></tbody>`;
+          const tb = tbl.querySelector('tbody');
+
+          list.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${s.name}</td>
+              <td>${s.program}</td>
+              <td>${fmtDate(s.ci)}</td>
+              <td>${fmtDate(s.co)}</td>
+              <td>${s.dur}</td>`;
+            tb.appendChild(tr);
+          });
+          body.appendChild(tbl);
+        }
+
+        contentEl.appendChild(day);
+      }
+    }
+
+    function renderByStudent(sessions){
+      const map = new Map();
+      for(const s of sessions){
+        if(!map.has(s.name)) map.set(s.name, { program:s.program, list:[] });
+        map.get(s.name).list.push(s);
+      }
+
+      const names = Array.from(map.keys()).sort((a,b)=> a.localeCompare(b));
+
+      for(const name of names){
+        const entry = map.get(name);
+        const list = entry.list.slice().sort((a,b)=> b.ci - a.ci);
+        const openCount = list.reduce((m, x)=> m + (x.co?0:1), 0);
+
+        const g = document.createElement('section');
+        g.className = 'group open';
+        g.innerHTML = `
+          <div class="group__head" data-toggle>
+            <h3 class="group__title">${name} <span style="font-weight:600; color:#516b75;">(${entry.program})</span></h3>
+            <div class="badges">
+              <span class="pill">${list.length} session${list.length===1?'':'s'}</span>
+              ${openCount ? `<span class="pill open-pill">${openCount} open</span>` : ''}
+            </div>
+          </div>
+          <div class="group__body">
+            <table class="table">
+              <thead><tr><th>Check-In</th><th>Check-Out</th><th>Minutes</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>`;
+        g.querySelector('[data-toggle]').addEventListener('click', (e)=>{
+          if(e.target.closest('button, a, input, select, label')) return;
+          g.classList.toggle('open');
+        });
+
+        const tb = g.querySelector('tbody');
+        list.forEach(s=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${fmtDate(s.ci)}</td><td>${fmtDate(s.co)}</td><td>${s.dur}</td>`;
+          tb.appendChild(tr);
+        });
+        contentEl.appendChild(g);
+      }
+    }
+
+    function downloadCSV(){
+      const rows = window.__logData || [];
+      let csv = "Name,Program,Check-In Time,Check-Out Time,Duration (min)\n";
+      for(const r of rows){
+        csv += r.map(v => `"${v instanceof Date ? v.toLocaleString() : (v ?? '')}"`).join(",") + "\n";
+      }
+      const blob = new Blob([csv], { type:"text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "student_logs.csv";
+      a.click();
+    }
+
+    async function archiveAndDeleteCurrentMonth(){
+      try{
+        const rows = window.__logData || [];
+        if(!rows.length) return showToast('No logs to archive.','info');
+
+        const now = new Date(); const m = now.getMonth(), y = now.getFullYear();
+        const monthRows = rows.filter(([,,ci,co]) => ci instanceof Date && co instanceof Date && ci.getMonth()===m && ci.getFullYear()===y);
+        if(!monthRows.length) return showToast('No completed logs from this month.','info');
+
+        let csv = "Name,Program,Check-In Time,Check-Out Time,Duration (min)\n";
+        for(const r of monthRows){
+          csv += r.map(v => `"${v instanceof Date ? v.toLocaleString() : (v ?? '')}"`).join(",") + "\n";
+        }
+        const blob = new Blob([csv], { type:"text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `student_logs_${now.toLocaleString('default',{month:'long'})}_${y}.csv`;
+        a.click();
+
+        if(!confirm("Archive complete. Delete ALL completed logs from this month?")) return;
+
+        const studentsSnap = await db.collection('users').doc(managerUid).collection('students').get({ source:'server' });
+        for(const st of studentsSnap.docs){
+          const ref = db.collection('users').doc(managerUid).collection('students').doc(st.id);
+          const sess = await ref.collection('sessions').get({ source:'server' });
+          for(const d of sess.docs){
+            const v = d.data(); const ci = v.checkInTime?.toDate(); const co = v.checkOutTime?.toDate();
+            if(ci && co && ci.getMonth()===m && ci.getFullYear()===y){
+              await ref.collection('sessions').doc(d.id).delete();
+            }
+          }
+        }
+        await db.waitForPendingWrites();
+        showToast('Completed logs deleted.','success');
+      }catch(err){
+        console.error(err); showToast(err.message || 'Archive failed.','error', 3400);
+      }finally{
+        loadLogs();
+      }
+    }
+  </script>
+</body>
+</html>
+
+

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login</title>
+
+  <!-- Firebase SDKs (v8 style) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <!-- Shared initializer -->
+  <script src="./js/firebase-init.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #7aafbb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      color: #000;
+    }
+    @keyframes popIn { from {opacity:0; transform:scale(.96)} to {opacity:1; transform:scale(1)} }
+    @keyframes shake { 10%, 90% {transform: translateX(-1px);} 20%,80% {transform: translateX(2px);} 30%,50%,70% {transform: translateX(-4px);} 40%,60% {transform: translateX(4px);} }
+
+    .login-box {
+      background: #cce6eb;
+      padding: 40px 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+      width: 320px;
+      text-align: center;
+      animation: popIn .45s ease-out;
+    }
+    .login-box h1 { margin-bottom: 20px; font-size: 1.8em; }
+
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+      background: #fff;
+    }
+    input:focus { border-color: #9ec8d3; box-shadow: 0 0 0 3px rgba(122,175,187,.18); }
+    .input--error { border-color: #dc6b6b; }
+
+    .row { display:flex; align-items:center; gap:8px; margin-top:6px; }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 15px;
+      background-color: #6497a5;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 1em;
+      color: black;
+      transition: filter .15s ease, opacity .15s ease;
+    }
+    button[disabled]{ opacity:.65; cursor:not-allowed; filter: grayscale(20%); }
+
+    .links {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .links a { font-size:.9em; color:#4a00b4; text-decoration: none; }
+
+    /* Friendly error banner */
+    .alert {
+      margin-top: 12px;
+      background:#fff3f3;
+      border:1px solid #f5c2c2;
+      color:#8a1f1f;
+      border-radius:10px;
+      padding:10px 12px;
+      font-size:.92em;
+      display:none;
+    }
+    .alert.show { display:block; animation: popIn .25s ease; }
+    .alert.shake { animation: shake .45s ease; }
+
+    .sr { position:absolute; left:-10000px; width:1px; height:1px; overflow:hidden; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>Admin Login</h1>
+
+    <input type="email" id="email" placeholder="Email" autocomplete="email" />
+    <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
+
+    <div class="row">
+      <input type="checkbox" id="showPassword" />
+      <label for="showPassword">Show Password</label>
+    </div>
+
+    <button id="loginBtn">Log in</button>
+
+    <div class="links">
+      <a href="forgot.html">Forgot password?</a>
+      <a href="signup.html">Sign up</a>
+    </div>
+
+    <div id="error" class="alert" role="status" aria-live="polite"></div>
+  </div>
+
+  <script>
+    const emailEl = document.getElementById('email');
+    const passEl  = document.getElementById('password');
+    const errEl   = document.getElementById('error');
+    const btn     = document.getElementById('loginBtn');
+
+    document.getElementById('showPassword')
+      .addEventListener('change', e => { passEl.type = e.target.checked ? 'text' : 'password'; });
+
+    // Submit with Enter
+    [emailEl, passEl].forEach(el => el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    }));
+    btn.addEventListener('click', doLogin);
+
+    function showError(msg, highlight = true) {
+      errEl.textContent = msg;
+      errEl.classList.add('show');
+      errEl.classList.remove('shake'); // restart shake
+      void errEl.offsetWidth;
+      errEl.classList.add('shake');
+
+      if (highlight) {
+        emailEl.classList.add('input--error');
+        passEl.classList.add('input--error');
+      }
+      // Clear after a bit (keeps UI tidy)
+      clearTimeout(showError._t);
+      showError._t = setTimeout(() => errEl.classList.remove('show'), 4500);
+    }
+
+    function clearErrorStyling() {
+      emailEl.classList.remove('input--error');
+      passEl.classList.remove('input--error');
+    }
+
+    async function doLogin() {
+      clearErrorStyling();
+      errEl.classList.remove('show');
+
+      const email = (emailEl.value || '').trim();
+      const pass  = passEl.value || '';
+
+      if (!email || !pass) {
+        showError('Please enter email and password.');
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+
+        await firebase.auth().signInWithEmailAndPassword(email, pass);
+
+        const user = firebase.auth().currentUser;
+        if (!user || !user.emailVerified) {
+          await firebase.auth().signOut();
+          showError('Please verify your email before logging in.', false);
+          btn.disabled = false;
+          return;
+        }
+
+        window.location.href = 'dashboard.html';
+      } catch (e) {
+        // Friendly messages only
+        const map = {
+          'auth/wrong-password':   'Incorrect email or password.',
+          'auth/user-not-found':   'Incorrect email or password.',
+          'auth/invalid-email':    'Please enter a valid email.',
+          'auth/too-many-requests':'Too many attempts. Try again later.',
+          'auth/network-request-failed': 'Network error. Check your connection and try again.'
+        };
+        showError(map[e.code] || 'Login failed. Please try again.');
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
+
