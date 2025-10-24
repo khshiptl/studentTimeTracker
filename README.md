@@ -30,6 +30,5 @@ The system allows managers to oversee student activity through a clean dashboard
 - Exportable reports for attendance and time tracking
 
 ## Author
-Laleen Salim  
+Khushi Patel
 Built for Kumon Math & Reading Center – Charlotte, NC  
-[LinkedIn](https://www.linkedin.com/in/your-link) | [GitHub](https://github.com/khshiptl)
